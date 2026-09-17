@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -9,8 +9,30 @@ const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const dashboardHome = process.env.OPENGRAM_HOME || path.join(homedir(), '.pi', 'bus', 'dashboard');
 const port = Number(process.env.MULTIPI_DASHBOARD_PORT || 43872);
 const configPath = path.join(dashboardHome, 'opengram.config.json');
+const pidPath = path.join(dashboardHome, 'multipi-dashboard.pid');
 
 mkdirSync(dashboardHome, { recursive: true });
+let pidFd;
+try {
+  pidFd = openSync(pidPath, 'wx');
+  writeFileSync(pidFd, String(process.pid));
+} catch (error) {
+  if (error?.code === 'EEXIST') {
+    const existingPid = Number(readFileSync(pidPath, 'utf8'));
+    try {
+      process.kill(existingPid, 0);
+      console.log(`multipi dashboard is already running (pid ${existingPid})`);
+      process.exit(0);
+    } catch {
+      rmSync(pidPath, { force: true });
+      pidFd = openSync(pidPath, 'wx');
+      writeFileSync(pidFd, String(process.pid));
+    }
+  } else {
+    throw error;
+  }
+}
+
 const existing = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {};
 const config = {
   ...existing,
@@ -51,14 +73,20 @@ const bridge = spawn(process.execPath, [path.join(sourceRoot, 'scripts/multipi-b
 const stop = () => {
   bridge.kill('SIGTERM');
   opengram.kill('SIGTERM');
+  rmSync(pidPath, { force: true });
 };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-opengram.on('exit', (code) => { bridge.kill('SIGTERM'); process.exit(code ?? 0); });
+opengram.on('exit', (code) => {
+  bridge.kill('SIGTERM');
+  rmSync(pidPath, { force: true });
+  process.exit(code ?? 0);
+});
 bridge.on('exit', (code) => {
   if (code && !opengram.killed) {
     console.error(`multipi bridge exited with ${code}`);
     opengram.kill('SIGTERM');
+    rmSync(pidPath, { force: true });
     process.exit(code);
   }
 });
