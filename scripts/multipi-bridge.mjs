@@ -35,15 +35,25 @@ function saveState(state) {
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
-async function request(url, init) {
-  const response = await fetch(url, {
-    ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers || {}) },
-  });
-  const text = await response.text();
-  const body = text ? JSON.parse(text) : undefined;
-  if (!response.ok) throw new Error(body?.error?.message || body?.error || `HTTP ${response.status}: ${url}`);
-  return body;
+async function request(url, init, attempts = 5) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const response = await fetch(url, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...(init?.headers || {}) },
+    });
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : undefined;
+    if (response.ok) return body;
+
+    if (response.status === 429 && attempt + 1 < attempts) {
+      const retryAfterMs = Math.max(250, Number(response.headers.get('retry-after') || 1) * 1000);
+      console.warn(`[multipi-dashboard] dashboard write rate limited; retrying in ${retryAfterMs}ms`);
+      await sleep(retryAfterMs);
+      continue;
+    }
+
+    throw new Error(body?.error?.message || body?.error || `HTTP ${response.status}: ${url}`);
+  }
 }
 
 async function waitForDashboard() {
@@ -171,16 +181,42 @@ async function mirrorMessagesIntoGroup(state, group, messages) {
   }
 }
 
+function componentKeys(messages) {
+  return connectedGroups(messages).map((component) => groupKey(component.members)).sort();
+}
+
+function sameComponents(left, right) {
+  const leftKeys = componentKeys(left);
+  const rightKeys = componentKeys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index]);
+}
+
 async function mirrorMessages(state, messages) {
-  let changed = false;
+  const previousMessages = Object.values(state.messages);
+  const newMessages = [];
   for (const message of messages) {
     if (!state.messages[String(message.id)]) {
       state.messages[String(message.id)] = message;
       state.lastBusId = Math.max(state.lastBusId, message.id);
-      changed = true;
+      newMessages.push(message);
     }
   }
-  if (changed) await rebuildGroups(state);
+  if (!newMessages.length) return;
+
+  const allMessages = Object.values(state.messages);
+  const components = connectedGroups(allMessages);
+  const groupsReady = components.every((component) => state.groups[groupKey(component.members)]);
+  if (!groupsReady || !sameComponents(previousMessages, allMessages)) {
+    await rebuildGroups(state);
+    return;
+  }
+
+  for (const component of components) {
+    const group = state.groups[groupKey(component.members)];
+    const messagesForGroup = newMessages.filter((message) => component.members.includes(message.from));
+    if (messagesForGroup.length) await mirrorMessagesIntoGroup(state, group, messagesForGroup);
+  }
+  saveState(state);
 }
 
 async function syncSince(state) {

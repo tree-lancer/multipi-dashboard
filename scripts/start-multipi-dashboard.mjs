@@ -34,6 +34,8 @@ const env = {
   OPENGRAM_CONFIG_PATH: configPath,
   MULTIPI_DASHBOARD: 'true',
   MULTIPI_DASHBOARD_URL: `http://127.0.0.1:${port}`,
+  OPENGRAM_WRITE_RATE_LIMIT_MAX: '10000',
+  OPENGRAM_WRITE_RATE_LIMIT_WINDOW_MS: '1000',
 };
 const opengram = spawn(process.execPath, [path.join(sourceRoot, 'apps/web/dist/cli/cli.js'), 'start', '--port', String(port)], {
   cwd: sourceRoot,
