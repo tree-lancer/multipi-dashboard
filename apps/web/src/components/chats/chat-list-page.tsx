@@ -11,6 +11,7 @@ import { SearchResultsList } from '@/src/components/chats/search-results-list';
 import { UnreadBadge } from '@/src/components/chats/unread-badge';
 import type { UseChatListReturn } from '@/src/components/chats/use-chat-list';
 import { HamburgerMenu } from '@/src/components/navigation/hamburger-menu';
+import { ThemeToggle } from '@/src/components/navigation/theme-toggle';
 import { Button } from '@/src/components/ui/button';
 import { Input } from '@/src/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/src/components/ui/select';
@@ -117,9 +118,10 @@ export function ChatListPage({
             </Button>
           </div>
         ) : (
-          <div className="grid h-full grid-cols-[42px_1fr_42px_42px] md:grid-cols-[36px_1fr_36px_36px] items-center">
+          <div className="grid h-full grid-cols-[42px_1fr_42px_42px_42px] md:grid-cols-[36px_1fr_36px_36px_36px] items-center">
             <HamburgerMenu />
             <div className="text-center">{headerContent}</div>
+            <ThemeToggle />
             <Button
               variant="ghost"
               size="icon"
