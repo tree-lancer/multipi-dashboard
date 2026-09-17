@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "npm -w apps/web run dev",
     "build": "npm -w apps/web run build",
+    "dashboard": "node scripts/start-multipi-dashboard.mjs",
     "test": "npm -w apps/web run test",
     "lint": "npm -w apps/web run lint",
     "typecheck": "npm -w apps/web run typecheck",

@@ -76,6 +76,20 @@ function getFileTypeInfo(contentType: string, filename: string): FileTypeInfo {
   return { Icon: File, colorClass: 'bg-slate-500/20 text-slate-400', label: ext.toUpperCase() || 'FILE' };
 }
 
+type MultipiTrace = {
+  subject?: 'task' | 'question' | 'reply';
+  recipients?: string[];
+  replyToBusId?: number | null;
+  replyToDashboardId?: string | null;
+};
+
+function getMultipiTrace(message: Message): MultipiTrace | null {
+  const candidate = message.trace?.multipi;
+  return candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+    ? candidate as MultipiTrace
+    : null;
+}
+
 function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1 py-0.5" aria-label="Agent is typing">
@@ -286,6 +300,7 @@ export function ChatMessages({
             }
 
             const baseBubbleClass = messageBubbleClass(message.role);
+            const multipi = getMultipiTrace(message);
             const bubbleClass = isImageOnly
               ? baseBubbleClass.replace('px-3 py-2', 'p-0 overflow-hidden')
               : isAudioOnly
@@ -295,6 +310,20 @@ export function ChatMessages({
             return (
               <div key={message.id} id={`msg-${message.id}`} className="mb-2 flex w-full">
                 <div className={bubbleClass}>
+                  {multipi && (
+                    <div className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-muted-foreground">
+                      <span>{message.sender_id}</span>
+                      <span className="rounded bg-background/50 px-1.5 py-0.5 uppercase tracking-wide">{multipi.subject}</span>
+                      {multipi.recipients?.length ? <span>→ {multipi.recipients.join(', ')}</span> : null}
+                    </div>
+                  )}
+                  {multipi?.replyToDashboardId ? (
+                    <a href={`#msg-${multipi.replyToDashboardId}`} className="mb-2 block rounded-lg border-l-2 border-primary/50 bg-background/30 px-2 py-1 text-xs text-muted-foreground hover:bg-background/50">
+                      Reply to bus message #{multipi.replyToBusId}
+                    </a>
+                  ) : multipi?.replyToBusId ? (
+                    <div className="mb-2 rounded-lg border-l-2 border-primary/50 bg-background/30 px-2 py-1 text-xs text-muted-foreground">Reply to bus message #{multipi.replyToBusId}</div>
+                  ) : null}
                   {/* TODO: When trace.reasoning is available, render <Reasoning> + <ReasoningTrigger> + <ReasoningContent> above the agent message */}
 
                   {typing ? (

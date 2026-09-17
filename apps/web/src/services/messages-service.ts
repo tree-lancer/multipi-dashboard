@@ -231,9 +231,13 @@ function ensureModelId(value: unknown) {
   }
 }
 
-function ensureSenderForRole(role: MessageRole, senderId: string, allowedAgentIds: Set<string>) {
+function isMultipiBusMessage(input: CreateMessageInput) {
+  return input.trace?.multipi !== undefined;
+}
+
+function ensureSenderForRole(role: MessageRole, senderId: string, allowedAgentIds: Set<string>, allowMultipiSender = false) {
   if (role === 'agent') {
-    if (!allowedAgentIds.has(senderId)) {
+    if (!allowMultipiSender && !allowedAgentIds.has(senderId)) {
       throw validationError('senderId must match a configured agent id for role agent.', {
         field: 'senderId',
       });
@@ -312,7 +316,7 @@ function normalizeCreateInput(input: CreateMessageInput) {
 export function createMessage(chatId: string, input: CreateMessageInput) {
   const normalized = normalizeCreateInput(input);
   const allowedAgentIds = new Set(loadOpengramConfig().agents.map((agent) => agent.id));
-  ensureSenderForRole(normalized.role, normalized.senderId, allowedAgentIds);
+  ensureSenderForRole(normalized.role, normalized.senderId, allowedAgentIds, isMultipiBusMessage(input));
 
   const db = getDb();
   const chat = getChatMessageMetadata(db, chatId);
