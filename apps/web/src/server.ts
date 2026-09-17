@@ -219,8 +219,11 @@ if (process.env.NODE_ENV !== "test") {
   // Initialize DB connection eagerly
   getDb();
 
-  // Auto-generate VAPID keys if missing
-  ensurePushProvisioned();
+  // The multipi dashboard is local and read-only, so it intentionally does not
+  // provision Web Push credentials or browser notifications.
+  if (process.env.MULTIPI_DASHBOARD !== 'true') {
+    ensurePushProvisioned();
+  }
 
   // Start background jobs
   startBackgroundJobs();

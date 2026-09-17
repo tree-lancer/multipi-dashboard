@@ -32,6 +32,7 @@ const env = {
   ...process.env,
   OPENGRAM_HOME: dashboardHome,
   OPENGRAM_CONFIG_PATH: configPath,
+  MULTIPI_DASHBOARD: 'true',
   MULTIPI_DASHBOARD_URL: `http://127.0.0.1:${port}`,
 };
 const opengram = spawn(process.execPath, [path.join(sourceRoot, 'apps/web/dist/cli/cli.js'), 'start', '--port', String(port)], {
@@ -52,4 +53,10 @@ const stop = () => {
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
 opengram.on('exit', (code) => { bridge.kill('SIGTERM'); process.exit(code ?? 0); });
-bridge.on('exit', (code) => { if (code && !opengram.killed) console.error(`multipi bridge exited with ${code}`); });
+bridge.on('exit', (code) => {
+  if (code && !opengram.killed) {
+    console.error(`multipi bridge exited with ${code}`);
+    opengram.kill('SIGTERM');
+    process.exit(code);
+  }
+});
