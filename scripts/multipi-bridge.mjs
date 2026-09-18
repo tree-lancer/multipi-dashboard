@@ -12,7 +12,17 @@ import path from 'node:path';
 const busUrl = (process.env.PI_BUS_URL || 'http://127.0.0.1:43871').replace(/\/$/, '');
 const dashboardUrl = (process.env.MULTIPI_DASHBOARD_URL || 'http://127.0.0.1:43872').replace(/\/$/, '');
 const dashboardHome = process.env.OPENGRAM_HOME || path.join(homedir(), '.pi', 'bus', 'dashboard');
-const statePath = path.join(dashboardHome, 'multipi-bridge.json');
+// A distinct bus (e.g. an isolated demo bus on a different port) must not
+// share cursor/group state with the primary bridge instance pointed at the
+// default bus — otherwise their lastBusId/group bookkeeping collide.
+const statePath = process.env.MULTIPI_BRIDGE_STATE_PATH || path.join(dashboardHome, 'multipi-bridge.json');
+// Extra chat tag applied to every group created by this bridge instance,
+// e.g. 'demo' when mirroring an isolated demo/eval bus so the dashboard UI
+// can visually distinguish it from real agent traffic.
+const extraTag = process.env.MULTIPI_BRIDGE_EXTRA_TAG || null;
+// Optional title prefix, e.g. '[demo] ', applied in addition to the tag so
+// the distinction is visible even where tags aren't rendered.
+const titlePrefix = process.env.MULTIPI_BRIDGE_TITLE_PREFIX || '';
 const pollRetryMs = 1500;
 
 /** @typedef {{ id:number, from:string, to:string, subject:'task'|'question'|'reply', content:string, attachment:string[], replyTo?:number, createdAt:string }} BusMessage */
@@ -31,7 +41,7 @@ function readState() {
 }
 
 function saveState(state) {
-  mkdirSync(dashboardHome, { recursive: true });
+  mkdirSync(path.dirname(statePath), { recursive: true });
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
@@ -116,7 +126,7 @@ function groupKey(members) {
 }
 
 function groupTitle(members) {
-  return members.join(' · ');
+  return `${titlePrefix}${members.join(' · ')}`;
 }
 
 async function archiveChat(chatId) {
@@ -124,13 +134,15 @@ async function archiveChat(chatId) {
 }
 
 async function createGroupChat(members) {
+  const tags = ['multipi', 'bus', 'connected-agents'];
+  if (extraTag) tags.push(extraTag);
   return request(`${dashboardUrl}/api/v1/chats`, {
     method: 'POST',
     body: JSON.stringify({
       agentIds: ['multipi-bus'],
       modelId: 'multipi-bus',
       title: groupTitle(members),
-      tags: ['multipi', 'bus', 'connected-agents'],
+      tags,
     }),
   });
 }
@@ -249,7 +261,7 @@ async function subscribe(state) {
         }
       }
     } catch (error) {
-      console.error(`[multipi-dashboard] bus subscription interrupted: ${error.message || error}`);
+      console.error(`[${logLabel}] bus subscription interrupted: ${error.message || error}`);
       await sleep(pollRetryMs);
     }
   }
@@ -257,13 +269,15 @@ async function subscribe(state) {
 
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
+const logLabel = extraTag ? `multipi-dashboard:${extraTag}` : 'multipi-dashboard';
+
 const state = readState();
 await waitForDashboard();
 try {
   await syncSince(state);
 } catch (error) {
-  console.error(`[multipi-dashboard] ${error.message || error}`);
+  console.error(`[${logLabel}] ${error.message || error}`);
   process.exit(1);
 }
-console.log(`[multipi-dashboard] mirroring ${busUrl} into ${dashboardUrl}`);
+console.log(`[${logLabel}] mirroring ${busUrl} into ${dashboardUrl}`);
 await subscribe(state);

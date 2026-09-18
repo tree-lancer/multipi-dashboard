@@ -84,6 +84,11 @@ export function ChatHeader({
           onClick={onTitleClick}
         >
           <p className="truncate text-sm font-semibold leading-5 text-foreground">
+            {chat?.tags?.includes('demo') && (
+              <span className="mr-1 rounded bg-amber-500/15 px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-amber-600 align-middle">
+                demo
+              </span>
+            )}
             {displayTitle}
             {typingTitle != null ? <span className="animate-pulse opacity-70">|</span> : null}
           </p>
