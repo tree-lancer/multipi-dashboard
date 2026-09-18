@@ -25,7 +25,7 @@ const extraTag = process.env.MULTIPI_BRIDGE_EXTRA_TAG || null;
 const titlePrefix = process.env.MULTIPI_BRIDGE_TITLE_PREFIX || '';
 const pollRetryMs = 1500;
 
-/** @typedef {{ id:number, from:string, to:string, subject:'task'|'question'|'reply', content:string, attachment:string[], replyTo?:number, createdAt:string }} BusMessage */
+/** @typedef {{ id:number, from:string, to:string, subject:'task'|'question'|'reply', content:string, attachment:string[], replyTo?:number, batchId?:number, createdAt:string }} BusMessage */
 
 function readState() {
   try {
@@ -80,7 +80,13 @@ async function waitForDashboard() {
 function groupMessages(messages) {
   const groups = new Map();
   for (const message of messages) {
-    const key = `${message.from}\u0000${message.subject}\u0000${message.content}\u0000${message.createdAt}\u0000${message.replyTo || ''}`;
+    // batchId groups every physical row created by one logical send() call
+    // (one row per destination) -- an exact key from the source of truth,
+    // not a guess from content/timestamp equality. Older rows synced before
+    // this field existed fall back to their own id (see queue.js
+    // rowToMessage), so they simply never collapse with anything, which is
+    // the correct behavior for data with no recorded batch.
+    const key = message.batchId ?? message.id;
     const group = groups.get(key) || { first: message, dests: [], ids: [] };
     group.dests.push(message.to);
     group.ids.push(message.id);
@@ -237,6 +243,14 @@ async function syncSince(state) {
 }
 
 async function subscribe(state) {
+  // The bus server broadcasts an entire logical send() call as a single
+  // 'message_batch' event (see server.js), so a 1-to-N broadcast is
+  // received here as one event carrying every recipient's row together —
+  // groupMessages() (keyed by batchId) can always collapse it correctly on
+  // the first attempt, with no timing assumptions and no buffering.
+  //
+  // 'message' (singular) is still handled for backward compatibility with
+  // an older, unrestarted bus process, but does not benefit from batching.
   while (true) {
     try {
       const response = await fetch(`${busUrl}/events/all`, { headers: { accept: 'text/event-stream' } });
@@ -255,7 +269,8 @@ async function subscribe(state) {
           const data = raw.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
           if (data) {
             const event = JSON.parse(data);
-            if (event.type === 'message') await mirrorMessages(state, [event.message]);
+            if (event.type === 'message_batch') await mirrorMessages(state, event.messages);
+            else if (event.type === 'message') await mirrorMessages(state, [event.message]);
           }
           boundary = buffer.indexOf('\n\n');
         }
